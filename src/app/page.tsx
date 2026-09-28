@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "@/features/workspace/useWorkspace";
 import type { CollectionName, Note, Project, Task } from "@/features/workspace/model";
+import PwaInstallPrompt from "./PwaInstallPrompt";
 
 type View = "home" | "tasks" | "notes" | "projects";
 type Kind = "task" | "note" | "project";
@@ -235,6 +236,7 @@ export default function WorkspacePage() {
           : await workspace.saveProject(form as Parameters<typeof workspace.saveProject>[0], item && "name" in item ? item : undefined);
       if (saved) { setDialog(null); setNotice(item && "id" in item ? "Changes saved" : `${dialog.kind[0].toUpperCase()}${dialog.kind.slice(1)} created`); }
     }} />}
+    <PwaInstallPrompt />
   </main>;
 }
 

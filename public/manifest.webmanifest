@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "Stillroom | Your personal workspace",
+  "short_name": "Stillroom",
+  "description": "A quieter place for tasks, notes, and projects.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0c0f0d",
+  "theme_color": "#0c0f0d",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/stillroom-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/stillroom-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/stillroom.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
