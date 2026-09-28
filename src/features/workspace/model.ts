@@ -5,6 +5,7 @@ export interface Task {
   title: string;
   description: string;
   projectId: EntityId | null;
+  dueDate?: string | null;
   completed: boolean;
   archived: boolean;
   createdAt: string;
@@ -37,7 +38,7 @@ export interface WorkspaceData {
 export type CollectionName = keyof WorkspaceData;
 export type WorkspaceEntity = Task | Note | Project;
 
-export type TaskInput = Pick<Task, "title" | "description" | "projectId">;
+export type TaskInput = Pick<Task, "title" | "description" | "projectId"> & { dueDate?: string | null };
 export type NoteInput = Pick<Note, "title" | "content" | "projectId">;
 export type ProjectInput = Pick<Project, "name" | "description">;
 

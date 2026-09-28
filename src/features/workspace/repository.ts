@@ -21,6 +21,12 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 function seedData(): WorkspaceData {
   const now = new Date().toISOString();
+  const localDate = new Date();
+  const dateAtOffset = (offset: number) => {
+    const date = new Date(localDate);
+    date.setDate(date.getDate() + offset);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
   const personalId = "seed-personal";
   const workId = "seed-work";
   const ideasId = "seed-ideas";
@@ -32,11 +38,11 @@ function seedData(): WorkspaceData {
       { id: ideasId, name: "Field notes", description: "Loose threads worth following.", createdAt: now, updatedAt: now },
     ],
     tasks: [
-      { id: "seed-task-week", title: "Plan the week", description: "Choose a few things to make room for.", projectId: personalId, completed: false, archived: false, createdAt: now, updatedAt: now },
-      { id: "seed-task-read", title: "Read for 30 minutes", description: "Pick up where you left off.", projectId: personalId, completed: false, archived: false, createdAt: now, updatedAt: now },
-      { id: "seed-task-review", title: "Review project requirements", description: "Collect the important decisions in one place.", projectId: workId, completed: false, archived: false, createdAt: now, updatedAt: now },
-      { id: "seed-task-priority", title: "Finish today's priority task", description: "Protect a focused block for this.", projectId: workId, completed: true, archived: false, createdAt: now, updatedAt: now },
-      { id: "seed-task-idea", title: "Explore a new project idea", description: "Start with a page of rough notes.", projectId: ideasId, completed: false, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-week", title: "Send the studio proposal", description: "Give the scope one final read before it goes out.", projectId: workId, dueDate: dateAtOffset(-1), completed: false, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-read", title: "Prepare the client review", description: "Pull together the latest screens and open questions.", projectId: workId, dueDate: dateAtOffset(0), completed: false, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-review", title: "Book a table for Friday", description: "Somewhere quiet enough to catch up properly.", projectId: personalId, dueDate: dateAtOffset(1), completed: false, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-priority", title: "Share the first concept draft", description: "Protect a focused block for this.", projectId: workId, dueDate: dateAtOffset(0), completed: true, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-idea", title: "Order a new notebook", description: "A small fresh start for the next project.", projectId: personalId, dueDate: dateAtOffset(6), completed: false, archived: false, createdAt: now, updatedAt: now },
     ],
     notes: [
       { id: "seed-note-welcome", title: "Welcome to your workspace", content: "Use this space to keep track of things you need to do, things you need to remember, and projects you are working on.\n\nStart small. Add a task, leave yourself a note, and let this workspace grow with you.", projectId: null, createdAt: now, updatedAt: now },
@@ -81,7 +87,25 @@ class IndexedDbWorkspaceRepository {
       requestResult<Note[]>(transaction.objectStore("notes").getAll()),
       requestResult<Project[]>(transaction.objectStore("projects").getAll()),
     ]);
-    const data: WorkspaceData = { tasks, notes, projects };
+    const dateOffsets: Record<string, number> = {
+      "seed-task-week": -1,
+      "seed-task-read": 0,
+      "seed-task-review": 1,
+      "seed-task-priority": 0,
+      "seed-task-idea": 6,
+    };
+    const today = new Date();
+    const tasksWithDates = tasks.map((task) => {
+      const offset = dateOffsets[task.id];
+      if (task.dueDate || offset === undefined) return task;
+      const due = new Date(today);
+      due.setDate(due.getDate() + offset);
+      const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
+      const migrated = { ...task, dueDate };
+      transaction.objectStore("tasks").put(migrated);
+      return migrated;
+    });
+    const data: WorkspaceData = { tasks: tasksWithDates, notes, projects };
     if (tasks.length === 0 && notes.length === 0 && projects.length === 0) {
       const seed = seedData();
       for (const store of STORES) {

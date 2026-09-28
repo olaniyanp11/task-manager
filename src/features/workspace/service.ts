@@ -16,7 +16,7 @@ export const workspaceService = {
     const now = timestamp();
     return workspaceRepository.put("tasks", {
       id: existing?.id ?? createId(), title: normalize(input.title), description: normalize(input.description),
-      projectId: input.projectId, completed: existing?.completed ?? false, archived: existing?.archived ?? false,
+      projectId: input.projectId, dueDate: input.dueDate || null, completed: existing?.completed ?? false, archived: existing?.archived ?? false,
       createdAt: existing?.createdAt ?? now, updatedAt: now,
     });
   },

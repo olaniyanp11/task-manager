@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
-  ArrowDownRight, ArrowUpRight, Check, CheckCheck, ChevronDown, Circle,
+  ArrowDownRight, ArrowUpRight, Check, CheckCheck, ChevronDown,
   FileText, FolderKanban, House, ListTodo, MoreHorizontal,
   Plus, Search, Settings2, Sparkles, StickyNote, X,
 } from "lucide-react";
@@ -24,15 +24,21 @@ function shortDate(date: string): string {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(date));
 }
 
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
 function cx(...values: (string | false | undefined)[]): string {
   return values.filter(Boolean).join(" ");
+}
+
+function dueLabel(dueDate?: string | null): string {
+  if (!dueDate) return "No due date";
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+  if (dueDate < todayKey) return `Overdue · ${shortDate(`${dueDate}T12:00:00`)}`;
+  if (dueDate === todayKey) return "Today";
+  if (dueDate === tomorrowKey) return "Tomorrow";
+  return shortDate(`${dueDate}T12:00:00`);
 }
 
 export default function WorkspacePage() {
@@ -108,6 +114,7 @@ export default function WorkspacePage() {
     <div className={cx("task-list", compact && "task-list-compact")}>
       {tasks.map((task) => (
         <TaskRow key={task.id} task={task} project={task.projectId ? projectById.get(task.projectId) : undefined}
+          projectColorIndex={task.projectId ? workspace.projects.findIndex((project) => project.id === task.projectId) : 0} minimal={compact}
           onToggle={() => workspace.updateTask(task.id, { completed: !task.completed })}
           onEdit={() => openEdit("task", task)} onArchive={() => workspace.updateTask(task.id, { archived: !task.archived })}
           onDelete={() => remove("tasks", task.id)} />
@@ -134,46 +141,16 @@ export default function WorkspacePage() {
   );
 
   function renderHome() {
-    const todaysTasks = activeTasks.slice(0, 4);
-    const recentNotes = [...workspace.notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3);
-    const recentTasks = [...workspace.tasks].filter((task) => !task.archived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3);
+    const todaysTasks = [...activeTasks].sort((a, b) => (a.dueDate ?? "9999-12-31").localeCompare(b.dueDate ?? "9999-12-31"));
     return <>
-      <section className="welcome-row">
-        <div><div className="eyebrow"><span className="live-dot" /> YOUR SPACE, IN GOOD ORDER</div><h1>{greeting()}.</h1><p className="welcome-copy">A little room to think, plan, and make progress.</p></div>
-        <div className="date-stamp"><span>TODAY</span><strong>{new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date())}</strong></div>
+      <section className="home-hero">
+        <h1>{activeTasks.length} tasks left <em>today</em></h1>
+        <p>Make a little room for the work that moves things forward.</p>
       </section>
-      <section className="stat-strip" aria-label="Workspace overview">
-        <div className="stat-cell"><span>IN MOTION</span><strong>{activeTasks.length.toString().padStart(2, "0")}</strong><small>active tasks</small></div>
-        <div className="stat-cell"><span>COMPLETED</span><strong>{completedTasks.length.toString().padStart(2, "0")}</strong><small>kept moving</small></div>
-        <div className="stat-cell"><span>PROJECTS</span><strong>{workspace.projects.length.toString().padStart(2, "0")}</strong><small>open spaces</small></div>
-        <div className="stat-cell"><span>NOTES</span><strong>{workspace.notes.length.toString().padStart(2, "0")}</strong><small>things remembered</small></div>
+      <section className="home-task-section" aria-label="Tasks to do">
+        {todaysTasks.length ? taskList(todaysTasks, true) : <EmptyState icon={<CheckCheck size={18} />} title="You're all caught up" detail="Add a task when something comes to mind." action="Add a task" onAction={() => openCreate("task")} />}
+        <button className="home-add-button primary-button" onClick={() => openCreate("task")}><Plus size={16} /> Add a task</button>
       </section>
-      <div className="home-columns">
-        <section className="content-section home-task-section">
-          <div className="section-heading"><div><span className="section-kicker">THE NEXT FEW</span><h2>On your list</h2></div><button className="text-link" onClick={() => setView("tasks")}>All tasks <ArrowUpRight size={14} /></button></div>
-          {todaysTasks.length ? taskList(todaysTasks, true) : <EmptyState icon={<CheckCheck size={18} />} title="You're all caught up" detail="Add a task when something comes to mind." action="Add a task" onAction={() => openCreate("task")} />}
-          <button className="add-inline" onClick={() => openCreate("task")}><Plus size={15} /> Add a task</button>
-        </section>
-        <section className="content-section project-section">
-          <div className="section-heading"><div><span className="section-kicker">YOUR AREAS</span><h2>Projects</h2></div><button className="icon-button" title="Add project" aria-label="Add project" onClick={() => openCreate("project")}><Plus size={17} /></button></div>
-          <div className="project-stack">{workspace.projects.map((project, index) => (
-            <button className="project-line" key={project.id} onClick={() => openProject(project.id)}>
-              <span className={`project-swatch swatch-${index % 4}`}><FolderKanban size={16} /></span><span className="project-line-copy"><strong>{project.name}</strong><small>{project.description || `${workspace.tasks.filter((task) => task.projectId === project.id && !task.archived).length} active items`}</small></span><ArrowUpRight size={14} className="project-arrow" />
-            </button>
-          ))}</div>
-          {!workspace.projects.length && <EmptyState icon={<FolderKanban size={18} />} title="No projects yet" detail="Give related work a home." action="Add a project" onAction={() => openCreate("project")} />}
-        </section>
-      </div>
-      <div className="home-columns lower-columns">
-        <section className="content-section">
-          <div className="section-heading"><div><span className="section-kicker">RECENTLY TOUCHED</span><h2>Recent notes</h2></div><button className="text-link" onClick={() => setView("notes")}>All notes <ArrowUpRight size={14} /></button></div>
-          {recentNotes.length ? <div className="recent-note-list">{recentNotes.map((note) => <button key={note.id} onClick={() => openEdit("note", note)}><span className="recent-note-icon"><FileText size={15} /></span><span><strong>{note.title}</strong><small>{note.content.split("\n")[0] || "No content yet."}</small></span><time>{shortDate(note.updatedAt)}</time></button>)}</div> : <EmptyState icon={<StickyNote size={18} />} title="Your notes will live here" detail="Capture the things you want to remember." action="Add a note" onAction={() => openCreate("note")} />}
-        </section>
-        <section className="content-section recent-activity">
-          <div className="section-heading"><div><span className="section-kicker">A LITTLE MOMENTUM</span><h2>Recent activity</h2></div></div>
-          <div className="activity-list">{recentTasks.map((task, index) => <div className="activity-row" key={task.id}><span className={cx("activity-marker", index === 0 && "activity-marker-active")}>{task.completed ? <Check size={12} /> : <Circle size={8} />}</span><span><strong>{task.title}</strong><small>{task.completed ? "Completed" : "Task updated"} · {shortDate(task.updatedAt)}</small></span></div>)}{!recentTasks.length && <p className="muted-line">Your latest work will show up here.</p>}</div>
-        </section>
-      </div>
     </>;
   }
 
@@ -269,14 +246,14 @@ function EmptyState({ icon, title, detail, action, onAction }: { icon: ReactNode
   return <div className="empty-state"><span className="empty-icon">{icon}</span><strong>{title}</strong><p>{detail}</p>{action && onAction && <button className="text-link" onClick={onAction}>{action} <ArrowUpRight size={13} /></button>}</div>;
 }
 
-function TaskRow({ task, project, onToggle, onEdit, onArchive, onDelete }: { task: Task; project?: Project; onToggle: () => void; onEdit: () => void; onArchive: () => void; onDelete: () => void }) {
+function TaskRow({ task, project, projectColorIndex = 0, minimal = false, onToggle, onEdit, onArchive, onDelete }: { task: Task; project?: Project; projectColorIndex?: number; minimal?: boolean; onToggle: () => void; onEdit: () => void; onArchive: () => void; onDelete: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
    return <article className={cx("task-row", task.completed && "task-row-complete", menuOpen && "task-row-menu-open")}>
     <button className={cx("task-check", task.completed && "task-checked")} aria-label={task.completed ? `Mark ${task.title} active` : `Complete ${task.title}`} onClick={onToggle}>{task.completed && <Check size={13} strokeWidth={2.5} />}</button>
-    <button className="task-copy" onClick={onEdit}><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}</button>
-    {project && <span className="task-project-tag"><i />{project.name}</span>}
-    <time className="task-date">{shortDate(task.updatedAt)}</time>
-    <div className="task-menu-wrap"><button className="icon-button task-more" title="Task actions" aria-label={`Actions for ${task.title}`} onClick={() => setMenuOpen(!menuOpen)}><MoreHorizontal size={17} /></button>{menuOpen && <><button className="menu-dismiss" aria-label="Close task menu" onClick={() => setMenuOpen(false)} /><div className="task-menu"><button onClick={() => { setMenuOpen(false); onEdit(); }}>Edit task</button><button onClick={() => { setMenuOpen(false); onArchive(); }}>{task.archived ? "Restore to active" : "Archive task"}</button><button className="menu-danger" onClick={() => { setMenuOpen(false); onDelete(); }}>Delete task</button></div></>}</div>
+    <button className="task-copy" onClick={onEdit}><strong>{task.title}</strong>{!minimal && task.description && <small>{task.description}</small>}</button>
+    {project && <span className="task-project-dot-tag"><i className={`task-project-dot-${projectColorIndex % 4}`} />{project.name}</span>}
+    <time className={cx("task-date", Boolean(task.dueDate && dueLabel(task.dueDate).startsWith("Overdue")) && "task-date-overdue")}>{dueLabel(task.dueDate)}</time>
+    {!minimal && <div className="task-menu-wrap"><button className="icon-button task-more" title="Task actions" aria-label={`Actions for ${task.title}`} onClick={() => setMenuOpen(!menuOpen)}><MoreHorizontal size={17} /></button>{menuOpen && <><button className="menu-dismiss" aria-label="Close task menu" onClick={() => setMenuOpen(false)} /><div className="task-menu"><button onClick={() => { setMenuOpen(false); onEdit(); }}>Edit task</button><button onClick={() => { setMenuOpen(false); onArchive(); }}>{task.archived ? "Restore to active" : "Archive task"}</button><button className="menu-danger" onClick={() => { setMenuOpen(false); onDelete(); }}>Delete task</button></div></>}</div>}
   </article>;
 }
 
@@ -288,11 +265,12 @@ function SearchResult({ title, detail, onClick }: { title: string; detail: strin
   return <button className="search-result" onClick={onClick}><span><strong>{title}</strong><small>{detail}</small></span><ArrowUpRight size={15} /></button>;
 }
 
-function EntityDialog({ kind, item, projects, onClose, onSave }: { kind: Kind; item?: Task | Note | Project; projects: Project[]; onClose: () => void; onSave: (value: { title?: string; name?: string; description?: string; content?: string; projectId?: string | null }) => Promise<void> }) {
+function EntityDialog({ kind, item, projects, onClose, onSave }: { kind: Kind; item?: Task | Note | Project; projects: Project[]; onClose: () => void; onSave: (value: { title?: string; name?: string; description?: string; content?: string; projectId?: string | null; dueDate?: string | null }) => Promise<void> }) {
   const isEdit = Boolean(item && "id" in item);
   const [title, setTitle] = useState(kind === "project" && item && "name" in item ? item.name : item && "title" in item ? item.title : "");
   const [detail, setDetail] = useState(kind === "task" && item && "description" in item ? item.description : kind === "note" && item && "content" in item ? item.content : item && "description" in item ? item.description : "");
   const [projectId, setProjectId] = useState(item && "projectId" in item ? item.projectId ?? "" : "");
+  const [dueDate, setDueDate] = useState(item && "dueDate" in item ? item.dueDate ?? "" : "");
   const [validation, setValidation] = useState("");
   const [saving, setSaving] = useState(false);
   const titleLabel = kind === "project" ? "Project name" : kind === "task" ? "Task title" : "Note title";
@@ -307,7 +285,7 @@ function EntityDialog({ kind, item, projects, onClose, onSave }: { kind: Kind; i
     event.preventDefault();
     if (!title.trim()) { setValidation(`Please enter a ${kind === "project" ? "name" : "title"}.`); return; }
     setSaving(true);
-    const value = kind === "task" ? { title, description: detail, projectId: projectId || null }
+    const value = kind === "task" ? { title, description: detail, projectId: projectId || null, dueDate: dueDate || null }
       : kind === "note" ? { title, content: detail, projectId: projectId || null }
         : { name: title, description: detail };
     await onSave(value);
@@ -321,6 +299,7 @@ function EntityDialog({ kind, item, projects, onClose, onSave }: { kind: Kind; i
       <form onSubmit={submit} noValidate>
         <label className="field-label" htmlFor="entity-title">{titleLabel}<span>REQUIRED</span></label><input id="entity-title" className="form-input" autoFocus value={title} onChange={(event) => { setTitle(event.target.value); setValidation(""); }} placeholder={kind === "task" ? "What needs doing?" : kind === "note" ? "Give this note a title" : "Name your project"} />
         <label className="field-label" htmlFor="entity-detail">{kind === "task" ? "Description" : kind === "note" ? "Content" : "Description"}<span>OPTIONAL</span></label>{kind === "note" ? <textarea id="entity-detail" className="form-input form-textarea note-editor" value={detail} onChange={(event) => setDetail(event.target.value)} placeholder="Write it down before it gets away..." rows={6} /> : <textarea id="entity-detail" className="form-input form-textarea" value={detail} onChange={(event) => setDetail(event.target.value)} placeholder={kind === "task" ? "Add a little context" : "What is this project about?"} rows={3} />}
+        {kind === "task" && <><label className="field-label" htmlFor="entity-due-date">Due date<span>OPTIONAL</span></label><input id="entity-due-date" className="form-input" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></>}
         {kind !== "project" && <><label className="field-label" htmlFor="entity-project">Project<span>OPTIONAL</span></label><select id="entity-project" className="form-input form-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></>}
         {validation && <p className="field-error" role="alert">{validation}</p>}
         <div className="dialog-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : isEdit ? "Save changes" : `Create ${kind}`}</button></div>
