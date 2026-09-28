@@ -1,0 +1,126 @@
+import type { CollectionName, Note, Project, Task, WorkspaceData } from "./model";
+
+const DATABASE_NAME = "fieldnotes-workspace";
+const DATABASE_VERSION = 1;
+const STORES: CollectionName[] = ["tasks", "notes", "projects"];
+
+function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("The local database request failed."));
+  });
+}
+
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error ?? new Error("The local database transaction was aborted."));
+    transaction.onerror = () => reject(transaction.error ?? new Error("The local database transaction failed."));
+  });
+}
+
+function seedData(): WorkspaceData {
+  const now = new Date().toISOString();
+  const personalId = "seed-personal";
+  const workId = "seed-work";
+  const ideasId = "seed-ideas";
+
+  return {
+    projects: [
+      { id: personalId, name: "Personal", description: "Small things that make life feel considered.", createdAt: now, updatedAt: now },
+      { id: workId, name: "Studio work", description: "The thoughtful work in progress.", createdAt: now, updatedAt: now },
+      { id: ideasId, name: "Field notes", description: "Loose threads worth following.", createdAt: now, updatedAt: now },
+    ],
+    tasks: [
+      { id: "seed-task-week", title: "Plan the week", description: "Choose a few things to make room for.", projectId: personalId, completed: false, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-read", title: "Read for 30 minutes", description: "Pick up where you left off.", projectId: personalId, completed: false, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-review", title: "Review project requirements", description: "Collect the important decisions in one place.", projectId: workId, completed: false, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-priority", title: "Finish today's priority task", description: "Protect a focused block for this.", projectId: workId, completed: true, archived: false, createdAt: now, updatedAt: now },
+      { id: "seed-task-idea", title: "Explore a new project idea", description: "Start with a page of rough notes.", projectId: ideasId, completed: false, archived: false, createdAt: now, updatedAt: now },
+    ],
+    notes: [
+      { id: "seed-note-welcome", title: "Welcome to your workspace", content: "Use this space to keep track of things you need to do, things you need to remember, and projects you are working on.\n\nStart small. Add a task, leave yourself a note, and let this workspace grow with you.", projectId: null, createdAt: now, updatedAt: now },
+      { id: "seed-note-ideas", title: "Project ideas", content: "A place for the ideas that are not ready to become plans yet.\n\nWhat would be useful to make? What would be fun to learn?", projectId: ideasId, createdAt: now, updatedAt: now },
+      { id: "seed-note-meeting", title: "Meeting notes", content: "Decisions\n- Keep the first version focused\n- Share a draft before polishing\n\nNext: gather feedback from the team", projectId: workId, createdAt: now, updatedAt: now },
+    ],
+  };
+}
+
+class IndexedDbWorkspaceRepository {
+  private databasePromise: Promise<IDBDatabase> | null = null;
+
+  private open(): Promise<IDBDatabase> {
+    if (typeof window === "undefined" || !window.indexedDB) {
+      return Promise.reject(new Error("This browser does not support local workspace storage."));
+    }
+
+    if (!this.databasePromise) {
+      this.databasePromise = new Promise((resolve, reject) => {
+        const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+        request.onupgradeneeded = () => {
+          for (const store of STORES) {
+            if (!request.result.objectStoreNames.contains(store)) {
+              request.result.createObjectStore(store, { keyPath: "id" });
+            }
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("Could not open the local workspace database."));
+        request.onblocked = () => reject(new Error("The local workspace database is blocked by another open tab."));
+      });
+    }
+
+    return this.databasePromise;
+  }
+
+  async getAll(): Promise<WorkspaceData> {
+    const database = await this.open();
+    const transaction = database.transaction(STORES, "readwrite");
+    const [tasks, notes, projects] = await Promise.all([
+      requestResult<Task[]>(transaction.objectStore("tasks").getAll()),
+      requestResult<Note[]>(transaction.objectStore("notes").getAll()),
+      requestResult<Project[]>(transaction.objectStore("projects").getAll()),
+    ]);
+    const data: WorkspaceData = { tasks, notes, projects };
+    if (tasks.length === 0 && notes.length === 0 && projects.length === 0) {
+      const seed = seedData();
+      for (const store of STORES) {
+        for (const item of seed[store]) transaction.objectStore(store).put(item);
+      }
+      await transactionDone(transaction);
+      return seed;
+    }
+    await transactionDone(transaction);
+    return data;
+  }
+
+  async put<T extends Task | Note | Project>(store: CollectionName, item: T): Promise<T> {
+    const database = await this.open();
+    const transaction = database.transaction(store, "readwrite");
+    transaction.objectStore(store).put(item);
+    await transactionDone(transaction);
+    return item;
+  }
+
+  async remove(store: CollectionName, id: string): Promise<void> {
+    const database = await this.open();
+    const transaction = database.transaction(store, "readwrite");
+    transaction.objectStore(store).delete(id);
+    await transactionDone(transaction);
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    const database = await this.open();
+    const transaction = database.transaction(["projects", "tasks", "notes"], "readwrite");
+    transaction.objectStore("projects").delete(id);
+    for (const store of ["tasks", "notes"] as const) {
+      const records = await requestResult<(Task | Note)[]>(transaction.objectStore(store).getAll());
+      for (const record of records) {
+        if (record.projectId === id) transaction.objectStore(store).put({ ...record, projectId: null, updatedAt: new Date().toISOString() });
+      }
+    }
+    await transactionDone(transaction);
+  }
+}
+
+export const workspaceRepository = new IndexedDbWorkspaceRepository();
